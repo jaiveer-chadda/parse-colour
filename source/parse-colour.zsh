@@ -9,7 +9,7 @@ function parsecolour() {
 
   # —— Environment Setup ———————————————————————————————— #
 
-  setopt local_options extended_glob warn_create_global
+  setopt local_options warn_create_global
 
   if ! { command -v parsecolour::{hsl_to_rgb,get_hue} &>/dev/null; } {
     source "${${(%):-%x}:h}/hsl-to-rgb.zsh"
@@ -44,7 +44,7 @@ function parsecolour() {
   # turn any amount of whitespace into a single space
   # then remove the leading and traling spaces
   # then make the whole thing lowercase
-  local -r input="${(L)${${*//[[:space:]]##/ }# }% }"
+  local -r input="${(L)${${(*)*//[[:space:]]##/ }# }% }"
 
   # —— Setup ———————————————————————————————————————————— #
 
@@ -53,9 +53,11 @@ function parsecolour() {
 
   # ————————————————————————————————————————————————————— #
 
+  setopt extended_glob
+
   # ── ── Hex ── ──────────────────────────────────────── #
 
-  if [[ "$input" == (\#|)([0-9a-f](#c3))(#c1,2) ]] {
+  if [[ "$input" == (\#|)( |)([0-9a-f](#c3))(#c1,2) ]] {
     #¬ `#807ded` `#87E` `807DED` `87e`
     col="${input#\#}"  # remove the leading hash if it exists
 
@@ -84,13 +86,13 @@ function parsecolour() {
 
     # if either of the last two digits are over 255, we know that the value
     #  is definitely out of bounds, so print an error and exit immediately
-    if (( rgb[2] > 255 || rgb[3] > 255 )) {
+    if (( rgb[2] > 255.0 || rgb[3] > 255.0 )) {
       echo "$0: rgb-bounds" >&2
       return 1
     }
     # but if the first digit is between 266 and 360, it might actually be an
     #  hsl colour. in that case, reset `$@rgb` so we can test for hsl instead
-    if (( 255 < rgb[1] && rgb[1] <= 360 )) rgb=()
+    if (( 255.0 < rgb[1] && rgb[1] <= 360.0 )) rgb=()
   }
 
   # ── ── HSL ── ──────────────────────────────────────── #
@@ -107,7 +109,7 @@ function parsecolour() {
     hsl=( "${(@)${(@s: :)col}:#}" )
 
     # if any of the values are out of bounds, throw an error
-    if (( hsl[1] > 360 || hsl[2] > 100 || hsl[2] > 100 )) {
+    if (( hsl[1] > 360.0 || hsl[2] > 100.0 || hsl[2] > 100.0 )) {
       echo "$0: hsl-bounds" >&2
       return 1
     }
@@ -144,7 +146,7 @@ function parsecolour() {
 
     # Mark Ransom – https://stackoverflow.com/a/946734
     # (tho I changed the exact cutoff)
-    local -ri 10 fg_colour=$(( luminance > 132 ? 30 : 37 ))
+    local -ri 10 fg_colour=$(( luminance > 132.0 ? 30 : 37 ))
 
     esc_colour=$'\e[1;'"$fg_colour;48;2;${(j:;:)rgb}m"
     reset=$'\e[m'

@@ -3,23 +3,24 @@
 # ── ── hsl_to_rgb() ── ───────────────────────────────────────────────────── #
 
 function parsecolour::hsl_to_rgb() {
-  local -F 10 red grn blu \
-    hue=$(( $1 / 360.0 )) \
-    sat=$(( $2 / 100.0 )) \
-    lig=$(( $3 / 100.0 ))
+  local  -F 10 red grn blu
+  local -rF 10 hue=$(( $1 / 360.0 )) \
+        saturation=$(( $2 / 100.0 )) \
+         lightness=$(( $3 / 100.0 ))
 
-  if ! (( sat )) { red=$lig  grn=$lig  blu=$lig  # achromatic
+  if ! (( saturation )) {  # achromatic
+    red=$lightness  grn=$lightness  blu=$lightness
+
   } else {
-
     # the maximum possible value for each of the RGB channels
-    local -F 10 rgb_max=$((
-      ( lig < 0.5 )
-        ? ( lig * ( sat + 1 ) )
-        : ( lig + sat - ( lig * sat ) )
+    local -rF 10 rgb_max=$((
+      ( lightness < 0.5 )
+        ? ( lightness * ( saturation + 1 ) )
+        : ( lightness + saturation - ( lightness * saturation ) )
     ))
 
     # the minimum possible value for each channel
-    local -F 10 rgb_min=$(( ( 2.0 * lig ) - rgb_max ))
+    local -rF 10 rgb_min=$(( ( 2.0 * lightness ) - rgb_max ))
 
     red=$( parsecolour::get_hue $rgb_min $rgb_max $(( hue + 1.0 / 3 )) )
     grn=$( parsecolour::get_hue $rgb_min $rgb_max    $hue              )
@@ -34,8 +35,9 @@ function parsecolour::hsl_to_rgb() {
 # ── ── hue_to_rgb() ── ───────────────────────────────────────────────────── #
 
 function parsecolour::get_hue() {
-  local -F 10 min=$1 max=$2 adj_h=$3  # adjusted hue
-  local -F 10 diff6=$(( ( max - min ) * 6.0 ))
+  local -rF 10   min=$1 max=$2
+  local  -F 10 adj_h=$3  # adjusted hue
+  local -rF 10 diff6=$(( ( max - min ) * 6.0 ))
 
   if (( adj_h < 0 )) (( adj_h++ ))
   if (( adj_h > 1 )) (( adj_h-- ))
