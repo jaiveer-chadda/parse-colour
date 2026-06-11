@@ -1,6 +1,6 @@
 #!/usr/bin/env zsh
 
-alias parse-colo{u,}r=parsecolour
+alias parse-col{o{u,}r,}=parsecolour
 
 #y)TODO: accept different options to turn on/off specific outputs
 
@@ -93,7 +93,7 @@ function parsecolour() {
       return 1
     }
 
-    rgb=( "${(@s: :)$( hsl_to_rgb "${(@)hsl}" )}" )
+    rgb=( "${(@s: :)$( parsecolour::hsl_to_rgb "${(@)hsl}" )}" )
     formatted_input="hsl( $hsl[1]°, $hsl[2]%, $hsl[3]% )"
   } 
 
@@ -137,6 +137,38 @@ function parsecolour() {
     }
     echo
   } >&2
+}
+
+function parsecolour::hsl_to_rgb() {
+  local -F 10 h=$(( $1 / 360.0 )) s=$(( $2 / 100.0 )) l=$(( $3 / 100.0 ))
+  local -F 10 r g b
+
+  if (( s == 0 )) {
+    r=$l g=$l b=$l  # achromatic
+  } else {
+
+    local -F 10 q=$(( l < 0.5 ? ( l * ( s + 1 ) ) : ( l + s - ( l * s ) ) ))
+    local -F 10 p=$(( 2.0 * l - q ))
+
+    r=$( parsecolour::hue_to_rgb $p $q $(( h + 1.0 / 3 )) )
+    g=$( parsecolour::hue_to_rgb $p $q $h                 )
+    b=$( parsecolour::hue_to_rgb $p $q $(( h - 1.0 / 3 )) )
+  }
+
+  printf $'%.0f %.0f %.0f\n' $(( r * 255 )) $(( g * 255 )) $(( b * 255 ))
+}
+
+function parsecolour::hue_to_rgb() {
+  local -F 10 P=$1 Q=$2 T=$3
+
+  if (( T < 0 )) (( T++ ))
+  if (( T > 1 )) (( T-- ))
+
+  if (( T < 1.0 / 6 )) echo $(( P + (Q-P) * 6.0 * T             )) && return
+  if (( T < 1.0 / 2 )) echo $Q                                     && return
+  if (( T < 2.0 / 3 )) echo $(( P + (Q-P) * ( 2.0 / 3 - T ) * 6 )) && return
+
+  echo $P
 }
 
 # spell:ignore perc
