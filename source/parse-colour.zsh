@@ -2,11 +2,16 @@
 
 alias parse-col{o{u,}r,}=parsecolour
 
-#y)TODO: accept different options to turn on/off specific outputs
+#y)TODO:
+#y)  - accept different options to turn on/off specific outputs
+#y)  - figure out why some decimals aren't working
+#y)  - refine the parsing logic to allow for more leniency, especially for hsl
+
+# ── ── parsecolour() ── ──────────────────────────────────────────────────── #
 
 function parsecolour() {
 
-  # —— Constants ——————————————————————————————————————————————— #
+  # —— Constants ———————————————————————————————————————— #
 
   setopt local_options extended_glob warn_create_global
 
@@ -17,27 +22,32 @@ function parsecolour() {
   local -r degs=" *$digs(°|degs?)? *"   # " *[0-9]{1,3}(°|degs?)? *"
   local -r perc=" *$digs(\.$digs%?)? *" # " *[0-9]{1,3}(\.[0-9]{1,3}%?)? *"
 
-  # —— Options Parsing ————————————————————————————————————————— #
+  # —— Options Parsing —————————————————————————————————— #
 
   local u_colour
   local -i 2 do_colour=-1  # -1 = auto,  0 = never,  1 = always
 
   local opt OPTARG OPTIND
-  while { getopts c: opt; } { case "$opt" { ( c ) u_colour="$OPTARG";; }; }
+
+  while { getopts 'c:' opt; } { #
+    case "$opt" {
+      ( c ) u_colour="$OPTARG" ;;
+    }
+  }
   shift 'OPTIND - 1'
 
   if [[ "$u_colour" == 'always' ]] do_colour=1
   if [[ "$u_colour" == 'never'  ]] do_colour=0
+  # else do_colour = -1
 
-  # —— Setup ——————————————————————————————————————————————————— #
+  # —— Setup ———————————————————————————————————————————— #
 
   local -a rgb hsl
-  local -i 2 try_hsl
   local col formatted_input
 
-  # ———————————————————————————————————————————————————————————— #
+  # ————————————————————————————————————————————————————— #
 
-  # ── ── Hex ── ─────────────────────────────────────────────── #
+  # ── ── Hex ── ──────────────────────────────────────── #
 
   if [[ "$*" == (|'#')([0-9a-fA-F](#c3))(#c1,2) ]] {
     #¬ `#807ded` `#87E` `807DED` `87e`
@@ -51,7 +61,7 @@ function parsecolour() {
     rgb=(  $(( 16#$rgb[1] ))  $(( 16#$rgb[2] ))  $(( 16#$rgb[3] ))  )
     formatted_input="#${(L)col}"
 
-  # ── ── RGB ── ─────────────────────────────────────────────── #
+  # ── ── RGB ── ──────────────────────────────────────── #
 
   } elif [[ "$*" =~ "^ *((rgb|RGB)?\()?${~numb},?${~numb},?${~numb}\)? *$" ]] {
     #¬ `rgb(128, 125, 237)`   `rgb(  128,125 237)`   `(  128   125   237   )`
@@ -60,8 +70,10 @@ function parsecolour() {
     # remove the leading `rgb` and `(`, and remove the trailing `)`
     # then replace all non-digits with spaces
     col="${${${${*#rgb}#\(}%\)}//[^0-9]/ }"
+
     # split at every space, then remove empty elements (`:#`)
     rgb=( "${(@)${(@s: :)col}:#}" )
+
     formatted_input="rgb( ${(j:, :)rgb} )"
 
     # if either of the last two digits are over 255, we know that the value
@@ -75,7 +87,7 @@ function parsecolour() {
     if (( 255 < rgb[1] && rgb[1] <= 360 )) rgb=()
   }
 
-  # ── ── HSL ── ─────────────────────────────────────────────── #
+  # ── ── HSL ── ──────────────────────────────────────── #
 
   # only check for hsl if `$@rgb` hasn't been set yet
   if ! (( $#rgb )) \
@@ -84,6 +96,7 @@ function parsecolour() {
     # remove the leading `hsl` and `(`, and remove the trailing `)`
     # then replace all non-digits (or decimals) with spaces
     col="${${${${*#hsl}#\(}%\)}//[^0-9.]/ }"
+
     # split at every space, then remove empty elements (`:#`)
     hsl=( "${(@)${(@s: :)col}:#}" )
 
@@ -97,9 +110,9 @@ function parsecolour() {
     formatted_input="hsl( $hsl[1]°, $hsl[2]%, $hsl[3]% )"
   } 
 
-  # ———————————————————————————————————————————————————————————— #
+  # ————————————————————————————————————————————————————— #
 
-  # —— Output Colour ——————————————————————————————————————————— #
+  # —— Output Colour ———————————————————————————————————— #
 
   # check that something was actually generated
   if ! (( $#rgb )) { echo "$0: colour-format" >&2; return 1; }
@@ -114,7 +127,7 @@ function parsecolour() {
   #  – the user didn't turn it off (`-c never`)
   if (( do_colour == 1 )) || [[
     -t 1
-    && -z "${NO_COLOR:-}"
+    && -z "$NO_COLOR"
     && "$do_colour" -ne 0 
     && "$COLORTERM" == (24bit|truecolor)
   ]] {
@@ -129,46 +142,63 @@ function parsecolour() {
     reset=$'\e[m'
   }
 
-  {
-    echo -n "$esc_colour$formatted_input$reset"  # hsl( 242°, 75%, 71% )
+  echo -n "$esc_colour$formatted_input$reset" >&2  # hsl( 242°, 75%, 71% )¬
 
-    if [[ "$formatted_input" != 'rgb'* ]] {  #  == rgb(129, 126, 237)
-      echo -n " == ${esc_colour}rgb( ${(j:, :)rgb} )$reset"
-    }
-    echo
-  } >&2
+  if [[ "$formatted_input" != 'rgb'* ]] \  # == rgb(129, 126, 237)¬
+    echo -n " == ${esc_colour}rgb( ${(j:, :)rgb} )$reset" >&2
+
+  echo >&2
 }
+
+# ── ── hsl_to_rgb() ── ───────────────────────────────────────────────────── #
+
+# parsecolour::
 
 function parsecolour::hsl_to_rgb() {
-  local -F 10 h=$(( $1 / 360.0 )) s=$(( $2 / 100.0 )) l=$(( $3 / 100.0 ))
-  local -F 10 r g b
+  local -F 10 red grn blu \
+    hue=$(( $1 / 360.0 )) \
+    sat=$(( $2 / 100.0 )) \
+    lig=$(( $3 / 100.0 ))
 
-  if (( s == 0 )) {
-    r=$l g=$l b=$l  # achromatic
+  if ! (( sat )) { red=$lig  grn=$lig  blu=$lig  # achromatic
   } else {
 
-    local -F 10 q=$(( l < 0.5 ? ( l * ( s + 1 ) ) : ( l + s - ( l * s ) ) ))
-    local -F 10 p=$(( 2.0 * l - q ))
+    # the maximum possible value for each of the RGB channels
+    local -F 10 rgb_max=$((
+      ( lig < 0.5 )
+        ? ( lig * ( sat + 1 ) )
+        : ( lig + sat - ( lig * sat ) )
+    ))
 
-    r=$( parsecolour::hue_to_rgb $p $q $(( h + 1.0 / 3 )) )
-    g=$( parsecolour::hue_to_rgb $p $q $h                 )
-    b=$( parsecolour::hue_to_rgb $p $q $(( h - 1.0 / 3 )) )
+    # the minimum possible value for each channel
+    local -F 10 rgb_min=$(( ( 2.0 * lig ) - rgb_max ))
+
+    red=$( parsecolour::get_hue $rgb_min $rgb_max $(( hue + 1.0 / 3 )) )
+    grn=$( parsecolour::get_hue $rgb_min $rgb_max    $hue              )
+    blu=$( parsecolour::get_hue $rgb_min $rgb_max $(( hue - 1.0 / 3 )) )
   }
 
-  printf $'%.0f %.0f %.0f\n' $(( r * 255 )) $(( g * 255 )) $(( b * 255 ))
+  # `%.0f` : round everything to the nearest integer
+  printf $'%.0f %.0f %.0f\n' \
+    $(( red * 255 )) $(( grn * 255 )) $(( blu * 255 ))
 }
 
-function parsecolour::hue_to_rgb() {
-  local -F 10 P=$1 Q=$2 T=$3
+# ── ── hue_to_rgb() ── ───────────────────────────────────────────────────── #
 
-  if (( T < 0 )) (( T++ ))
-  if (( T > 1 )) (( T-- ))
+function parsecolour::get_hue() {
+  local -F 10 min=$1 max=$2 adj_h=$3  # adjusted hue
+  local -F 10 diff6=$(( ( max - min ) * 6.0 ))
 
-  if (( T < 1.0 / 6 )) echo $(( P + (Q-P) * 6.0 * T             )) && return
-  if (( T < 1.0 / 2 )) echo $Q                                     && return
-  if (( T < 2.0 / 3 )) echo $(( P + (Q-P) * ( 2.0 / 3 - T ) * 6 )) && return
+  if (( adj_h < 0 )) (( adj_h++ ))
+  if (( adj_h > 1 )) (( adj_h-- ))
 
-  echo $P
+  if (( adj_h < 1.0 / 6 )) echo $(( min + diff6 * adj_h           )) && return
+  if (( adj_h < 1.0 / 2 )) echo $max                                 && return
+  if (( adj_h < 2.0 / 3 )) echo $(( min + diff6 * (2.0/3 - adj_h) )) && return
+
+  echo $min
 }
+
+# ——————————————————————————————————————————————————————————————————————————— #
 
 # spell:ignore perc
