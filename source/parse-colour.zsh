@@ -17,10 +17,9 @@ function parsecolour() {
 
   # —— Constants ———————————————————————————————————————— #
 
-  local -r digs='( |)[0-9](#c1,3)'
-  local -r decm="$digs(.[0-9]##|)( |)"
-  local -r degs="$decm(°|deg(s|)|)"
-  local -r perc="$decm(%|)"
+  local -r number="( |)[0-9](#c1,3)(.[0-9]##|)( |)"
+  local -r degs="$number(°|deg(s|)|)" perc="$number(%|)"
+  local -ri 10 decm_plcs=1
 
   # —— Options Parsing —————————————————————————————————— #
 
@@ -49,7 +48,7 @@ function parsecolour() {
   # —— Setup ———————————————————————————————————————————— #
 
   local -a rgb hsl
-  local col formatted_input
+  local type col formatted_input
 
   # ————————————————————————————————————————————————————— #
 
@@ -60,6 +59,7 @@ function parsecolour() {
   if [[ "$input" == (\#|)( |)([0-9a-f](#c3))(#c1,2) ]] {
     #¬ `#807ded` `#87E` `807DED` `87e`
     col="${input#\#}"  # remove the leading hash if it exists
+    type=hex-$#col
 
     # if it's a 3-digit hex value, duplicate every char to make it 6-digits
     if (( $#col == 3 )) { rgb=( $col[1]$col[1] $col[2]$col[2] $col[3]$col[3] )
@@ -71,18 +71,17 @@ function parsecolour() {
 
   # ── ── RGB ── ──────────────────────────────────────── #
 
-  } elif [[ "$input" == (rgb|)( |)('('|)$~decm((,|)$~decm)(#c2)(')'|) ]] {
+  } elif [[ "$input" == (rgb|)( |)('('|)$~number((,|)$~number)(#c2)(')'|) ]] {
     #¬ `rgb(128, 125, 237)`   `rgb(  128,125 237)`   `(  128   125   237   )`
     #¬ `128 125 237`   `128,125,237`
+    type=rgb
 
     # remove the leading `rgb` and `(`, and remove the trailing `)`
     # then replace all non-digits with spaces
-    col="${${${input#(rgb|)(\(|)}%\)}//[^0-9]/ }"
+    col="${${${input#(rgb|)(\(|)}%\)}//[^0-9.]/ }"
 
     # split at every space, then remove empty elements (`:#`)
     rgb=( "${(@)${(@s: :)col}:#}" )
-
-    formatted_input="rgb( ${(j:, :)rgb} )"
 
     # if either of the last two digits are over 255, we know that the value
     #  is definitely out of bounds, so print an error and exit immediately
@@ -97,9 +96,11 @@ function parsecolour() {
 
   # ── ── HSL ── ──────────────────────────────────────── #
 
-  # only check for hsl if `$@rgb` hasn't been set yet
+  # only check for hsl if `$@rgb` hasn't been set yet (or been unset)
   if ! (( $#rgb )) &&
     [[ "$input" == (hsl|)( |)('('|)$~degs(( |)[\ ,]$~perc)(#c2)(')'|) ]] {
+    #¬ `hsl(242deg, 75.74%, 71.05%)`
+    type=hsl
 
     # remove the leading `hsl` and `(`, and remove the trailing `)`
     # then replace all non-digits (or decimals) with spaces
@@ -114,14 +115,41 @@ function parsecolour() {
       return 1
     }
 
-    rgb=( "${(@s: :)$( parsecolour::hsl_to_rgb "${(@)hsl}" )}" )
-    formatted_input="hsl( $hsl[1]°, $hsl[2]%, $hsl[3]% )"
+    rgb=( "${(@s: :)$( parsecolour::hsl_to_rgb "${(@)hsl}" )% }" ) || {
+      echo "$0: hsl-conversion" >&2
+      return 1
+    }
   }
 
   # ————————————————————————————————————————————————————— #
 
   # check that something was actually generated
   if ! (( $#rgb )) { echo "$0: colour-format" >&2; return 1; }
+
+  # —— Format HSL & RGB ————————————————————————————————— #
+
+  # only hsl and rgb have the possibility of having decimal rgb values
+  if [[ $type == (hsl|rgb) ]] {
+    printf -v rgb "%.${decm_plcs}f" "${(@)rgb}"
+
+    local -a match mbegin mend
+    # strip off the decimal point and zeroes from `123.0000`
+    rgb=( "${(@*)rgb/%.0#}" )
+    # strip off the zeroes from `123.4500`
+    rgb=( "${(@*)rgb/%.(#b)([0-9]#[1-9])(#B)0##/.$match[1]}" )
+
+    if [[ "$type" == rgb ]] {
+      formatted_input="rgb( ${(j:, :)rgb} )"
+
+    } else { # elif [[ "$type" == hsl ]] ...
+      printf -v hsl "%.${decm_plcs}f" "${(@)hsl}"
+
+      hsl=( "${(@*)hsl/%.0#}" )
+      hsl=( "${(@*)hsl/%.(#b)([0-9]#[1-9])(#B)0##/.$match[1]}" )
+
+      formatted_input="hsl( $hsl[1]°, $hsl[2]%, $hsl[3]% )"
+    }
+  }
 
   # —— Output Colour ———————————————————————————————————— #
 
@@ -148,16 +176,16 @@ function parsecolour() {
     # (tho I changed the exact cutoff)
     local -ri 10 fg_colour=$(( luminance > 132.0 ? 30 : 37 ))
 
-    esc_colour=$'\e[1;'"$fg_colour;48;2;${(j:;:)rgb}m"
+    # round each of the `$@rgb` values before using them
+    printf -v esc_colour \
+      '\e[1;%d;48;2;%.0f;%.0f;%.0fm' $fg_colour "${(@)rgb}"
     reset=$'\e[m'
   }
 
-  echo -n "$esc_colour$formatted_input$reset"  # hsl( 242°, 75%, 71% )¬
+  local output="$esc_colour$formatted_input$reset"
+  if [[ $type != rgb ]] output+=" == ${esc_colour}rgb( ${(j:, :)rgb} )$reset"
 
-  if [[ "$formatted_input" != 'rgb'* ]] {  # == rgb(129, 126, 237)¬
-    echo -n " == ${esc_colour}rgb( ${(j:, :)rgb} )$reset"
-  }
-  echo
+  echo -E - "$output"
 }
 
 # spell:ignore perc decm

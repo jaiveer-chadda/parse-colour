@@ -27,8 +27,7 @@ function parsecolour::hsl_to_rgb() {
     blu=$( parsecolour::get_hue $rgb_min $rgb_max $(( hue - 1.0 / 3 )) )
   }
 
-  # `%.0f` : round everything to the nearest integer
-  printf $'%.0f %.0f %.0f\n' \
+  printf "%.${decm_plcs:-1}f " \
     $(( red * 255 )) $(( grn * 255 )) $(( blu * 255 ))
 }
 
@@ -48,3 +47,5 @@ function parsecolour::get_hue() {
 
   echo $min
 }
+
+# spell:ignore decm
