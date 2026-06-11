@@ -2,6 +2,8 @@
 
 alias parse-colo{u,}r=parsecolour
 
+#y)TODO: accept different options to turn on/off specific outputs
+
 function parsecolour() {
 
   # —— Constants ——————————————————————————————————————————————— #

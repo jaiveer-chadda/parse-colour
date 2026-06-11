@@ -1,4 +1,17 @@
+# parse-colour/.gitignore
+     
+# Project Files
+./out/
+./build/
+
+# System Files
 .DS_Store
-.vscode/
-tests/
 Icon?
+
+# IDEs
+.idea/
+.vscode/
+    
+# Other
+~$*
+*_temp*
