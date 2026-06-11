@@ -15,44 +15,68 @@ function parsecolour() {
     source "${${(%):-%x}:h}/hsl-to-rgb.zsh"
   }
 
+  # ————————————————————————————————————————————————————————————————————————— #
+
   # —— Constants ———————————————————————————————————————— #
 
   local -r number="( |)[0-9](#c1,3)(.[0-9]##|)( |)"
   local -r degs="$number(°|deg(s|)|)" perc="$number(%|)"
-  local -ri 10 decm_plcs=1
 
-  # —— Options Parsing —————————————————————————————————— #
+  # —— Get Options —————————————————————————————————————— #
 
   local u_colour
-  local -i 2 do_colour=-1  # -1 = auto,  0 = never,  1 = always
   local opt OPTARG OPTIND
+  local -i 10 decm_plcs=1
 
-  while { getopts 'c:' opt; } { #
+  while { getopts 'c:d:' opt; } { #
     case "$opt" {
-      ( c ) u_colour="$OPTARG" ;;
+      ( c )  u_colour="$OPTARG" ;;
+      ( d ) decm_plcs="$OPTARG" ;;
+      ( * )
+        echo "$0: bad-option" >&2
+        return 1
+      ;;
     }
   }
   shift 'OPTIND - 1'
 
-  if [[ "$u_colour" == 'always' ]] do_colour=1
-  if [[ "$u_colour" == 'never'  ]] do_colour=0
-  # else do_colour = -1
+  if ! (( $# )) {
+    echo "$0: no-args" >&2
+    return 1
+  }
 
-  # ————————————————————————————————————————————————————— #
+  # —— Options Parsing —————————————————————————————————— #
+
+  # only display in colour if
+  #  – the user asked for it (`-c always`)
+  # OR
+  #  – the output is a tty,         AND
+  #  – `$NO_COLOR` is unset,        AND
+  #  – the user didn't turn it off, AND
+  #  – the term has 24-bit colour
+
+  local -i 2 do_colour=0
+  if [[ "$u_colour" == always || (
+    -t 1
+    && -z "$NO_COLOR"
+    && "$u_colour"  != never
+    && "$COLORTERM" == (24bit|truecolor)
+  ) ]] do_colour=1
+
+  # —— Get Input ———————————————————————————————————————— #
 
   # turn any amount of whitespace into a single space
   # then remove the leading and traling spaces
   # then make the whole thing lowercase
   local -r input="${(L)${${(*)*//[[:space:]]##/ }# }% }"
 
-  # —— Setup ———————————————————————————————————————————— #
+  # ————————————————————————————————————————————————————————————————————————— #
+  # —— Parsing Setup ———————————————————————————————————— #
+
+  setopt extended_glob
 
   local -a rgb hsl
   local type col formatted_input
-
-  # ————————————————————————————————————————————————————— #
-
-  setopt extended_glob
 
   # ── ── Hex ── ──────────────────────────────────────── #
 
@@ -124,8 +148,12 @@ function parsecolour() {
   # ————————————————————————————————————————————————————— #
 
   # check that something was actually generated
-  if ! (( $#rgb )) { echo "$0: colour-format" >&2; return 1; }
+  if ! (( $#rgb )) {
+    echo "$0: colour-format" >&2
+    return 1
+  }
 
+  # ————————————————————————————————————————————————————————————————————————— #
   # —— Format HSL & RGB ————————————————————————————————— #
 
   # only hsl and rgb have the possibility of having decimal rgb values
@@ -138,10 +166,8 @@ function parsecolour() {
     # strip off the zeroes from `123.4500`
     rgb=( "${(@*)rgb/%.(#b)([0-9]#[1-9])(#B)0##/.$match[1]}" )
 
-    if [[ "$type" == rgb ]] {
-      formatted_input="rgb( ${(j:, :)rgb} )"
-
-    } else { # elif [[ "$type" == hsl ]] ...
+    if [[ "$type" == rgb ]] formatted_input="rgb( ${(j:, :)rgb} )"
+    if [[ "$type" == hsl ]] {
       printf -v hsl "%.${decm_plcs}f" "${(@)hsl}"
 
       hsl=( "${(@*)hsl/%.0#}" )
@@ -153,21 +179,8 @@ function parsecolour() {
 
   # —— Output Colour ———————————————————————————————————— #
 
-  # only display the colour if
-  #  – the user asked for it (`-c always`)
-  # OR
-  #  – the output is a tty,        AND
-  #  – `$NO_COLOR` is unset,       AND
-  #  – the term has 24-bit colour, AND
-  #  – the user didn't turn it off (`-c never`)
-
   local esc_colour= reset=
-  if (( do_colour == 1 )) || [[
-    -t 1
-    && -z "$NO_COLOR"
-    && "$COLORTERM" == (24bit|truecolor)
-    && "$do_colour" -ne 0 
-  ]] {
+  if (( do_colour )) {
 
     # W3C – https://www.w3.org/TR/AERT/#color-contrast
     local -rF 10 luminance=$(( rgb[1]*0.299 + rgb[2]*0.587 + rgb[3]*0.114 ))
